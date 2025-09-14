@@ -6,7 +6,11 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    print("test")
+    return
+
+
+@app.cell
+def _():
     return
 
 
