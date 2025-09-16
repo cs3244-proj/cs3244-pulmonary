@@ -8,8 +8,8 @@ app = marimo.App(width="medium")
 def _():
     # Packages
     import pandas as pd
-
-    return (pd,)
+    import tensorflow as tf
+    return pd, tf
 
 
 @app.cell
@@ -94,6 +94,13 @@ def _(all_data):
     ]
     print(f"Created {len(feature_columns)} features")
     print("Features:", feature_columns)
+    # Check for missing values
+    missing_check = all_data_baseline[feature_columns].isnull().sum()
+    if missing_check.sum() > 0:
+        print("Missing values found:")
+        print(missing_check[missing_check > 0])
+    else:
+        print("\nNo missing values in features")
     return all_data_baseline, feature_columns
 
 
@@ -110,6 +117,42 @@ def _(all_data_baseline, feature_columns):
     print(f"Training data: X={X.shape}, y={y.shape}")
     print(f"Test data: X_test={X_test.shape}")
     print(f"Target range: [{y.min():.1f}, {y.max():.1f}]")
+
+    return
+
+
+@app.cell
+def _(tf):
+    # Config
+    QUANTILES = [0.2, 0.5, 0.8]
+    N_FOLDS = 5
+    EPOCHS = 300
+    BATCH_SIZE = 64
+    LEARNING_RATE = 0.001
+    # Loss FUnctions
+    def pinball_loss(y_true, y_pred):
+        losses = []
+        for i, q in enumerate(QUANTILES):
+            error = y_true - y_pred[:, i:i+1]
+            loss_q = tf.maximum(q * error, (q - 1)* error)
+            losses.append(loss_q)
+        return tf.reduce_mean(tf.concat(losses, axis=1))
+
+    def competition_metric(y_true, y_pred):
+        median_pred = y_pred[:, 1] 
+        confidence_width = y_pred[:, 2] - y_pred[:, 0]
+
+        confidence_clipped = tf.maximum(confidence_width, 70.0)
+        error = tf.abs(y_true[:, 0] - median_pred)
+        error_clipped = tf.minimum(error, 1000.0)
+
+        sqrt_2 = tf.sqrt(2.0)
+        metric = (error_clipped / confidence_clipped) * sqrt_2 + tf.math.log(confidence_clipped * sqrt_2)
+        return tf.reduce_mean(metric)
+    # Combined Loss (80% 20 % split)
+    def combined_loss(y_true, y_pred):
+        return 0.8 * pinball_loss(y_true, y_pred) + 0.2 * competition_metric(y_true, y_pred)
+    
     return
 
 
